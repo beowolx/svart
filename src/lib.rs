@@ -5,15 +5,14 @@ use kiddo::float::{distance::squared_euclidean, kdtree::KdTree};
 
 const BUCKET_SIZE: usize = 32;
 
-// The constant 768 is used for the embedding dimensionality in the BERT model.
-// https://arxiv.org/abs/1810.04805
+/// The constant 768 is used for the embedding dimensionality in the BERT model.
+/// For more details, check:  https://arxiv.org/abs/1810.04805
 const BERT_EMBEDDING_DIM: usize = 768;
 
 const K_NEAREST_NEIGHBOURS: usize = 10;
 
 pub type Tree = KdTree<f32, u32, BERT_EMBEDDING_DIM, BUCKET_SIZE, u16>;
 
-#[derive(Clone, Debug)]
 pub struct Data {
   pub text: String,
   pub embedding: Vec<f32>,
@@ -38,19 +37,23 @@ impl Svart {
 }
 
 impl Svart {
-  pub fn index(&mut self, data: Vec<Data>) -> anyhow::Result<()> {
-    for d in data.iter() {
+  pub fn index(&mut self, mut data: Vec<Data>) -> anyhow::Result<()> {
+    // Preallocate memory for self.data
+    self.data.reserve(data.len());
+
+    for d in data.iter_mut() {
       let node = Node {
-        text: d.text.clone(),
+        // Consume the text field to avoid cloning
+        text: std::mem::take(&mut d.text),
       };
 
-      // Use the length as the index
       let index = self.data.len() as u32;
       self.data.push(node);
 
       // Resize embeddings and add to KdTree
       let mut embeddings = d.embedding.clone();
       embeddings.resize(BERT_EMBEDDING_DIM, 0.0);
+
       let query: &[f32; BERT_EMBEDDING_DIM] =
         &embeddings.try_into().map_err(|_| {
           anyhow::anyhow!("Failed to convert embeddings into fixed-size array")
@@ -103,26 +106,23 @@ mod tests {
   fn it_correctly_indexes_the_data() {
     let mut svart = Svart::new();
 
-    // Create test Data objects
     let data = vec![
       Data {
         text: "text1".to_string(),
-        embedding: vec![1.0; 100], // Fewer than 768 elements
+        embedding: vec![1.0; 100],
       },
       Data {
         text: "text2".to_string(),
-        embedding: vec![1.0; 1000], // More than 768 elements
+        embedding: vec![1.0; 1000],
       },
       Data {
         text: "text3".to_string(),
-        embedding: vec![1.0; 768], // Exactly 768 elements
+        embedding: vec![1.0; 768],
       },
     ];
 
-    // Index the Data objects
     svart.index(data).unwrap();
 
-    // Check the size of the HashMap and the KdTree
     assert_eq!(svart.data.len(), 3);
     assert_eq!(svart.tree.size(), 3);
   }
@@ -131,32 +131,27 @@ mod tests {
   fn it_returns_all_search_results() {
     let mut svart = Svart::new();
 
-    // Create test Data objects
     let data = vec![
       Data {
         text: "text1".to_string(),
-        embedding: vec![1.0; 100], // Fewer than 768 elements
+        embedding: vec![1.0; 100],
       },
       Data {
         text: "text2".to_string(),
-        embedding: vec![1.0; 1000], // More than 768 elements
+        embedding: vec![1.0; 1000],
       },
       Data {
         text: "text3".to_string(),
-        embedding: vec![1.0; 768], // Exactly 768 elements
+        embedding: vec![1.0; 768],
       },
     ];
 
-    // Index the Data objects
     svart.index(data).unwrap();
 
-    // Create a query
     let query = vec![1.0; 768];
 
-    // Search the KdTree
     let results = svart.search(query).unwrap();
 
-    // Check the size of the results
     assert_eq!(results.len(), 3);
   }
 
