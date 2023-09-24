@@ -1,29 +1,56 @@
 use kiddo::float::kdtree::KdTree;
+use std::collections::HashMap;
+use uuid::Uuid;
 
-type Embeddings = Vec<Vec<f32>>;
+const BUCKET_SIZE: usize = 32;
 
-pub type Tree = KdTree<f32, u32, 768, 32, u16>;
+// The constant 768 is used for the embedding dimensionality in the BERT model.
+// https://arxiv.org/abs/1810.04805
+const BERT_EMBEDDING_DIM: usize = 768;
+
+pub type Tree = KdTree<f32, u32, BERT_EMBEDDING_DIM, BUCKET_SIZE, u16>;
+
+pub struct Data {
+    pub id: Uuid,
+    pub text: String,
+    pub embedding: Vec<f32>,
+}
+
+pub struct Node {
+    pub id: Uuid,
+    pub text: String,
+}
 
 pub struct Svart {
-    storage: Tree,
+    tree: Tree,
+    data: HashMap<Uuid, Node>,
 }
 
 impl Svart {
     pub fn new() -> Self {
         Self {
-            storage: Tree::new(),
+            tree: Tree::new(),
+            data: HashMap::new(),
         }
     }
 }
 
 impl Svart {
-    pub fn index(&mut self, mut embeddings: Embeddings) {
-        for (idx, embedding) in embeddings.iter_mut().enumerate() {
-            embedding.resize(768, 0.0);
-            let query: &[f32; 768] = embedding[0..768]
-                .try_into()
-                .expect("slice with incorrect length");
-            self.storage.add(query, idx as u32);
+    pub fn index(&mut self, data: Vec<Data>) -> () {
+        for d in data.iter() {
+            let node = Node {
+                id: d.id,
+                text: d.text.clone(),
+            };
+
+            self.data.insert(d.id, node);
+
+            // Resize embeddings and add to KdTree
+            let mut embeddings = d.embedding.clone();
+            embeddings.resize(BERT_EMBEDDING_DIM, 0.0);
+            let query: &[f32; BERT_EMBEDDING_DIM] =
+                &embeddings.try_into().expect("Failed to convert embeddings");
+            self.tree.add(query, d.id.as_u128() as u32)
         }
     }
 }
@@ -31,21 +58,36 @@ impl Svart {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn test_index() {
         let mut svart = Svart::new();
 
-        // Index multiple embeddings at once
-        let embeddings: Embeddings = vec![
-            vec![1.0; 100],  // Fewer than 768 elements
-            vec![1.0; 1000], // More than 768 elements
-            vec![1.0; 768],  // Exactly 768 elements
+        // Create test Data objects
+        let data = vec![
+            Data {
+                id: Uuid::new_v4(),
+                text: "text1".to_string(),
+                embedding: vec![1.0; 100], // Fewer than 768 elements
+            },
+            Data {
+                id: Uuid::new_v4(),
+                text: "text2".to_string(),
+                embedding: vec![1.0; 1000], // More than 768 elements
+            },
+            Data {
+                id: Uuid::new_v4(),
+                text: "text3".to_string(),
+                embedding: vec![1.0; 768], // Exactly 768 elements
+            },
         ];
 
-        svart.index(embeddings);
+        // Index the Data objects
+        svart.index(data);
 
-        // Check the size of the tree
-        assert_eq!(svart.storage.size(), 3);
+        // Check the size of the HashMap and the KdTree
+        assert_eq!(svart.data.len(), 3);
+        assert_eq!(svart.tree.size(), 3);
     }
 }
