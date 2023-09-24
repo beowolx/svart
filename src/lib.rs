@@ -37,6 +37,33 @@ impl Svart {
 }
 
 impl Svart {
+  /// Indexes the given `data` by adding it to the internal data structure and KdTree.
+  ///
+  /// This method takes ownership of the `data` vector and adds each element to the internal data
+  /// structure. It also resizes the embeddings to `BERT_EMBEDDING_DIM` and adds them to the KdTree.
+  ///
+  /// # Arguments
+  ///
+  /// * `data` - A vector of `Data` elements to be indexed.
+  ///
+  /// # Errors
+  ///
+  /// This method returns an `anyhow::Error` if it fails to convert the embeddings into a fixed-size
+  /// array.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use svart::Index;
+  ///
+  /// let mut index = Index::new();
+  /// let data = vec![Data {
+  ///     text: "Hello, world!".to_string(),
+  ///     embedding: vec![1.0, 2.0, 3.0],
+  /// }];
+  ///
+  /// index.index(data).unwrap();
+  /// ```
   pub fn index(&mut self, mut data: Vec<Data>) -> anyhow::Result<()> {
     // Preallocate memory for self.data
     self.data.reserve(data.len());
@@ -64,6 +91,26 @@ impl Svart {
     Ok(())
   }
 
+  /// Searches the KdTree for the nearest neighbors to the given query vector using squared Euclidean distance.
+  ///
+  /// This method employs the K-Nearest Neighbors (K-NN) algorithm with squared Euclidean distance as the distance metric.
+  /// It first resizes the query vector to match the fixed dimensionality of the BERT model (768).
+  /// Then, it searches the KdTree to find the nearest neighbors based on the squared Euclidean distance.
+  ///
+  /// The function returns a vector of references to `Node` objects, which are the nearest neighbors to the query vector.
+  ///
+  /// # Arguments
+  ///
+  /// * `query` - A vector of `f32` values representing the query vector.
+  ///
+  /// # Returns
+  ///
+  /// Returns a `Result` containing a vector of references to `Node` objects, which are the nearest neighbors to the query vector.
+  ///
+  /// # Errors
+  ///
+  /// - Returns an error if the query vector cannot be resized and converted into a fixed-size array of `BERT_EMBEDDING_DIM` elements.
+  /// - Returns an error if a node corresponding to a particular index in the KdTree is not found.
   pub fn search(&mut self, mut query: Vec<f32>) -> anyhow::Result<Vec<&Node>> {
     query.resize(BERT_EMBEDDING_DIM, 0.0);
 
