@@ -2,8 +2,19 @@
 name = "svart"
 version = "0.1.0"
 edition = "2021"
+authors = ["Luis Cardoso <luis@luiscardoso.dev>"]
+description = "Svart: A high-performance vector database in Rust. Named after the Swedish word for 'black,' Svart aims for sleek and efficient data indexing and retrieval."
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/LuisCardosoOliveira/svart"
+keywords = ["svart", "vector store", "vector database", "knn"]
+categories = ["vector store", "vector database"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+panic = "abort"
+lto = true        # invokes the dark magic from LLVM's to link time optimizations (LTO)
+codegen-units = 1 # optimise code gen size
+opt-level = "s"   # optimise for binary size
 
 [dependencies]
 anyhow = "1.0.75"
