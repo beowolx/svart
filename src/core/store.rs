@@ -76,11 +76,10 @@ impl Svart {
       self.data.push(node);
 
       // Resize embeddings and add to KdTree
-      let mut embeddings = d.embedding.clone();
-      embeddings.resize(BERT_EMBEDDING_DIM, 0.0);
+      d.embedding.resize(BERT_EMBEDDING_DIM, 0.0);
 
       let query: &[f32; BERT_EMBEDDING_DIM] =
-        &embeddings.try_into().map_err(|_| {
+        d.embedding.as_slice().try_into().map_err(|_| {
           anyhow::anyhow!("Failed to convert embeddings into fixed-size array")
         })?;
 
