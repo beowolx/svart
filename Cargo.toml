@@ -12,10 +12,14 @@ categories = ["vector store", "vector database"]
 
 [profile.release]
 panic = "abort"
-lto = true        # invokes the dark magic from LLVM's to link time optimizations (LTO)
-codegen-units = 1 # optimise code gen size
-opt-level = "s"   # optimise for binary size
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[lib]
+name = "svart"
+crate-type = ["cdylib"]
 
 [dependencies]
-anyhow = "1.0.75"
-kiddo = "2.1.1"
+kiddo = "3.0.0"
+pyo3 = "0.20.0"
