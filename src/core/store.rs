@@ -1,5 +1,6 @@
-use anyhow::Context;
-use kiddo::float::{distance::squared_euclidean, kdtree::KdTree};
+use pyo3::prelude::*;
+
+use kiddo::float::{distance::SquaredEuclidean, kdtree::KdTree};
 
 const BUCKET_SIZE: usize = 32;
 
@@ -11,30 +12,60 @@ const K_NEAREST_NEIGHBOURS: usize = 10;
 
 type Tree = KdTree<f32, u32, BERT_EMBEDDING_DIM, BUCKET_SIZE, u16>;
 
+#[pyclass]
+#[derive(FromPyObject)]
 pub struct Data {
   pub text: String,
   pub embedding: Vec<f32>,
 }
 
+#[pymethods]
+impl Data {
+  #[new]
+  fn new(text: String, embedding: Vec<f32>) -> Self {
+    Data { text, embedding }
+  }
+}
+
+#[pyclass]
+#[derive(Clone)]
 pub struct Node {
+  #[pyo3(get)]
   text: String,
 }
 
+#[pymethods]
+impl Node {
+  #[new]
+  fn new(text: String) -> Self {
+    Node { text }
+  }
+
+  fn __repr__(&self) -> PyResult<String> {
+    Ok(format!("Node(text: {})", self.text))
+  }
+
+  fn __str__(&self) -> PyResult<String> {
+    Ok(self.text.clone())
+  }
+}
+
+#[pyclass]
 pub struct Svart {
   tree: Tree,
+  #[pyo3(get)]
   data: Vec<Node>,
 }
 
+#[pymethods]
 impl Svart {
+  #[new]
   pub fn new() -> Self {
     Self {
       tree: Tree::new(),
       data: Vec::new(),
     }
   }
-}
-
-impl Svart {
   /// Indexes the given `data` by adding it to the internal data structure and KdTree.
   ///
   /// This method takes ownership of the `data` vector and adds each element to the internal data
@@ -43,11 +74,6 @@ impl Svart {
   /// # Arguments
   ///
   /// * `data` - A vector of `Data` elements to be indexed.
-  ///
-  /// # Errors
-  ///
-  /// This method returns an `anyhow::Error` if it fails to convert the embeddings into a fixed-size
-  /// array.
   ///
   /// # Examples
   ///
@@ -62,30 +88,36 @@ impl Svart {
   ///
   /// svart.index(data).unwrap();
   /// ```
-  pub fn index(&mut self, mut data: Vec<Data>) -> anyhow::Result<()> {
+  pub fn index(&mut self, mut data: Vec<PyRef<Data>>) {
     // Preallocate memory for self.data
     self.data.reserve(data.len());
 
     for d in data.iter_mut() {
+      // Resize embeddings and add to KdTree
+      let mut embedding = d.embedding.clone();
+      embedding.resize(BERT_EMBEDDING_DIM, 0.0);
+
       let node = Node {
-        // Consume the text field to avoid cloning
-        text: std::mem::take(&mut d.text),
+        text: d.text.clone(),
       };
 
       let index = self.data.len() as u32;
       self.data.push(node);
 
-      // Resize embeddings and add to KdTree
-      d.embedding.resize(BERT_EMBEDDING_DIM, 0.0);
-
+      // Convert the resized embedding to a fixed-size array
       let query: &[f32; BERT_EMBEDDING_DIM] =
-        d.embedding.as_slice().try_into().map_err(|_| {
-          anyhow::anyhow!("Failed to convert embeddings into fixed-size array")
-        })?;
+        match embedding.as_slice().try_into() {
+          Ok(arr) => arr,
+          Err(_) => {
+            eprintln!(
+              "Error: Embedding vector has incorrect length after resizing"
+            );
+            continue;
+          }
+        };
 
       self.tree.add(query, index)
     }
-    Ok(())
   }
 
   /// Searches the KdTree for the nearest neighbors to the given query vector using squared Euclidean distance.
@@ -126,115 +158,123 @@ impl Svart {
   /// let results = svart.search(query).unwrap();
   /// assert_eq!(results.len(), 1);
   /// ```
-  pub fn search(&mut self, mut query: Vec<f32>) -> anyhow::Result<Vec<&Node>> {
+  pub fn search(&mut self, mut query: Vec<f32>) -> Vec<Node> {
     query.resize(BERT_EMBEDDING_DIM, 0.0);
 
-    let query: &[f32; BERT_EMBEDDING_DIM] =
-      &query.try_into().map_err(|_| {
-        anyhow::anyhow!(
-          "Failed to convert query embeddings into fixed-size array"
-        )
-      })?;
+    let query: &[f32; BERT_EMBEDDING_DIM] = &query.try_into().unwrap();
 
     // Search the KdTree
-    let neighbours =
-      self
-        .tree
-        .nearest_n(query, K_NEAREST_NEIGHBOURS, &squared_euclidean);
+    let neighbours = self
+      .tree
+      .nearest_n::<SquaredEuclidean>(query, K_NEAREST_NEIGHBOURS);
 
     let mut data = Vec::with_capacity(neighbours.len());
 
     for n in neighbours.iter() {
       let index = n.item as usize;
-      let node = self
-        .data
-        .get(index)
-        .context(format!("Node not found at index {}", index))?;
+      let node = self.data.get(index).unwrap();
 
-      data.push(node);
+      data.push(node.clone());
     }
 
-    Ok(data)
+    data
   }
 }
 
 #[cfg(test)]
 mod tests {
-
-  use crate::core::embeddings_fixtures::{EMBEDDINGS, QUERY, TEXT};
-
   use super::*;
+  use crate::core::embeddings_fixtures::{EMBEDDINGS, QUERY, TEXT};
+  use pyo3::{prepare_freethreaded_python, Py, Python};
+
+  fn create_data_instance(
+    py: Python,
+    text: &str,
+    embedding: Vec<f32>,
+  ) -> Py<Data> {
+    Py::new(
+      py,
+      Data {
+        text: text.to_string(),
+        embedding,
+      },
+    )
+    .unwrap()
+  }
 
   #[test]
   fn it_correctly_indexes_the_data() {
-    let mut svart = Svart::new();
+    prepare_freethreaded_python();
+    Python::with_gil(|py| {
+      let mut svart = Svart::new();
 
-    let data = vec![
-      Data {
-        text: "text1".to_string(),
-        embedding: vec![1.0; 100],
-      },
-      Data {
-        text: "text2".to_string(),
-        embedding: vec![1.0; 1000],
-      },
-      Data {
-        text: "text3".to_string(),
-        embedding: vec![1.0; 768],
-      },
-    ];
+      let data_instances = vec![
+        create_data_instance(py, "text1", vec![1.0; 100]),
+        create_data_instance(py, "text2", vec![1.0; 1000]),
+        create_data_instance(py, "text3", vec![1.0; 768]),
+      ];
 
-    svart.index(data).unwrap();
+      let data_pyrefs: Vec<PyRef<Data>> = data_instances
+        .iter()
+        .map(|data_instance| data_instance.borrow(py))
+        .collect();
 
-    assert_eq!(svart.data.len(), 3);
-    assert_eq!(svart.tree.size(), 3);
+      svart.index(data_pyrefs);
+
+      assert_eq!(svart.data.len(), 3);
+      assert_eq!(svart.tree.size(), 3);
+    });
   }
 
   #[test]
   fn it_returns_all_search_results() {
-    let mut svart = Svart::new();
+    prepare_freethreaded_python();
+    Python::with_gil(|py| {
+      let mut svart = Svart::new();
 
-    let data = vec![
-      Data {
-        text: "text1".to_string(),
-        embedding: vec![1.0; 100],
-      },
-      Data {
-        text: "text2".to_string(),
-        embedding: vec![1.0; 1000],
-      },
-      Data {
-        text: "text3".to_string(),
-        embedding: vec![1.0; 768],
-      },
-    ];
+      let data_instances = vec![
+        create_data_instance(py, "text1", vec![1.0; 100]),
+        create_data_instance(py, "text2", vec![1.0; 1000]),
+        create_data_instance(py, "text3", vec![1.0; 768]),
+      ];
 
-    svart.index(data).unwrap();
+      let data_pyrefs: Vec<PyRef<Data>> = data_instances
+        .iter()
+        .map(|data_instance| data_instance.borrow(py))
+        .collect();
 
-    let query = vec![1.0; 768];
+      svart.index(data_pyrefs);
 
-    let results = svart.search(query).unwrap();
+      let query = vec![1.0; 768];
+      let results = svart.search(query);
 
-    assert_eq!(results.len(), 3);
+      assert_eq!(results.len(), 3);
+    });
   }
 
   #[test]
   fn it_returns_the_indexed_data() {
-    let mut svart = Svart::new();
-    let data: Vec<Data> = EMBEDDINGS
-      .iter()
-      .enumerate()
-      .map(|(i, x)| Data {
-        text: TEXT.get(i).unwrap().to_string(),
-        embedding: x.to_vec(),
-      })
-      .collect();
+    prepare_freethreaded_python();
+    Python::with_gil(|py| {
+      let mut svart = Svart::new();
 
-    svart.index(data).unwrap();
+      let data_instances: Vec<Py<Data>> = EMBEDDINGS
+        .iter()
+        .enumerate()
+        .map(|(i, x)| {
+          create_data_instance(py, TEXT.get(i).unwrap(), x.to_vec())
+        })
+        .collect();
 
-    // The query here is: "What are your vegan options?"
-    let results = svart.search(QUERY.to_vec()).unwrap();
+      let data_pyrefs: Vec<PyRef<Data>> = data_instances
+        .iter()
+        .map(|data_instance| data_instance.borrow(py))
+        .collect();
 
-    assert_eq!(results.get(0).unwrap().text, TEXT[2]);
+      svart.index(data_pyrefs);
+
+      let results = svart.search(QUERY.to_vec());
+      assert_eq!(results.get(0).unwrap().text, TEXT[2]);
+    });
   }
 }
