@@ -1,39 +1,39 @@
 import pytest
 import svart
+from embeddings_fixture import TEXT_FIXTURE, EMBEDDINGS_FIXTURE, QUERY_FIXTURE
 
 
-def test_data_creation():
-    """Test creating an instance of Data."""
-    assert hasattr(svart, 'Data'), "Data class is not available in svart module"
-    assert 'text' in dir(svart.Data), "Data class does not have a 'text' attribute"
-
-    data_instance = svart.Data(text="example", embedding=[0.1, 0.2, 0.3])
-    assert data_instance.text == "example"
-    # ... (rest of your test code)
-
-
-
-# def test_data_creation():
-#     """Test creating an instance of Data."""
-#     data_instance = svart.Data(text="example", embedding=[0.1, 0.2, 0.3])
-#     assert data_instance.text == "example"
-#     assert data_instance.embedding == [0.1, 0.2, 0.3]
-
-def test_svart_new():
-    """Test creating an instance of Svart."""
+def test_search_returns_correct_data():
+    """Test that search returns the correct data."""
     svart_instance = svart.Svart()
-    assert svart_instance is not None
 
-def test_index_and_search():
-    """Test indexing and searching functionality of Svart."""
+    data = [svart.Data(text=TEXT_FIXTURE[i], embedding=EMBEDDINGS_FIXTURE[i])
+            for i in range(len(TEXT_FIXTURE))]
+
+    svart_instance.index(data)
+    results = svart_instance.search(QUERY_FIXTURE)
+    assert results[0].text == TEXT_FIXTURE[2]
+
+
+def test_correct_indexing():
+    """Test that data is correctly indexed."""
     svart_instance = svart.Svart()
-    data_instance = svart.Data(text="example", embedding=[0.1] * 768)
-    
-    svart_instance.index([data_instance])
-    
-    # Assuming your search method returns a list of Data instances
-    results = svart_instance.search([0.1] * 768)
+
+    data = [svart.Data(text=TEXT_FIXTURE[i], embedding=EMBEDDINGS_FIXTURE[i])
+            for i in range(len(TEXT_FIXTURE))]
+    svart_instance.index(data)
+
+    assert len(svart_instance.data) == len(data)
+
+
+def test_search_results():
+    """Test the search functionality."""
+    svart_instance = svart.Svart()
+
+    data = [svart.Data(text=TEXT_FIXTURE[i], embedding=EMBEDDINGS_FIXTURE[i])
+            for i in range(len(TEXT_FIXTURE))]
+    svart_instance.index(data)
+
+    results = svart_instance.search(QUERY_FIXTURE)
     assert len(results) > 0
-    assert results[0].text == "example"
-
-# Additional tests can be written for other functionalities
+    assert all(isinstance(node, svart.Node) for node in results)
