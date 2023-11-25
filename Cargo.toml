@@ -1,0 +1,25 @@
+[package]
+name = "svart"
+version = "0.1.0"
+edition = "2021"
+authors = ["Luis Cardoso <luis@luiscardoso.dev>"]
+description = "Svart: A high-performance vector database in Rust. Named after the Swedish word for 'black,' Svart aims for sleek and efficient data indexing and retrieval."
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/LuisCardosoOliveira/svart"
+keywords = ["svart", "vector store", "vector database", "knn"]
+categories = ["vector store", "vector database"]
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+[lib]
+name = "svart"
+crate-type = ["cdylib"]
+
+[dependencies]
+kiddo = "3.0.0"
+pyo3 = "0.20.0"
