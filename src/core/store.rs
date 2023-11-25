@@ -30,6 +30,7 @@ impl Data {
 #[pyclass]
 #[derive(Clone)]
 pub struct Node {
+  #[pyo3(get)]
   text: String,
 }
 
@@ -52,6 +53,7 @@ impl Node {
 #[pyclass]
 pub struct Svart {
   tree: Tree,
+  #[pyo3(get)]
   data: Vec<Node>,
 }
 
