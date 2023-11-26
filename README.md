@@ -2,7 +2,7 @@
 
 ## Overview
 
-Svart is a vector store implemented in Rust, designed to index and search high-dimensional vectors with a focus on memory efficiency. Leveraging Rust's powerful memory management capabilities, Svart aims to provide a robust and efficient solution for nearest neighbor searches in the context of Natural Language Processing (NLP) embeddings and other high-dimensional data.
+Svart is an innovative vector store built in Rust, offering unparalleled memory efficiency and speed for indexing and searching high-dimensional vectors. It is particularly tailored for use in Natural Language Processing (NLP) embeddings and similar complex data scenarios. With native Python bindings, Svart seamlessly integrates into Python environments, bridging the gap between Rust's performance and Python's ease of use.
 
 **Note**: This project is under active development and is not yet considered stable.
 
@@ -11,6 +11,8 @@ Svart is a vector store implemented in Rust, designed to index and search high-d
 - **Memory Efficiency**: Built with Rust's zero-cost abstractions to minimize memory footprint.
 - **Efficient Indexing and Searching**: Utilizes [K-d Trees](https://en.wikipedia.org/wiki/K-d_tree) for efficient spatial searches.
 - **Flexible**: Designed to work with [BERT](https://arxiv.org/abs/1810.04805) embeddings.
+- **Python Integration**: Native Python bindings for effortless use in Python projects.
+- **Focused and Minimalist**: Delivers essential features without unnecessary complexity.
 
 ## Technical Details
 
@@ -38,21 +40,7 @@ One of the primary goals of Svart is to be memory-efficient. Rust's ownership mo
 
 ## Usage
 
-### Indexing Data
-
-```rust
-use svart::{Svart, Data};
-
-let mut svart = Svart::new();
-let data = vec![Data {
-    text: "Hello, world!".to_string(),
-    embedding: vec![1.0, 2.0, 3.0],
-}];
-
-svart.index(data).unwrap();
-```
-
-### Searching Data
+### Rust
 
 ```rust
 use svart::{Svart, Data};
@@ -71,6 +59,16 @@ let results = svart.search(query).unwrap();
 assert_eq!(results.len(), 1);
 ```
 
+### Python
+
+```python
+import svart
+
+svart_store = svart.Svart()
+data = [svart.Data(text="Example", embedding=[...])]
+svart_store.index(data)
+results = svart_store.search([...])
+```
 
 ## Limitations and Future Work
 
