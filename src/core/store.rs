@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use kiddo::float::{distance::SquaredEuclidean, kdtree::KdTree};
+use instant_distance::{Builder, HnswMap, Point, Search};
 
 const BUCKET_SIZE: usize = 32;
 
@@ -8,9 +8,20 @@ const BUCKET_SIZE: usize = 32;
 /// For more details, check:  https://arxiv.org/abs/1810.04805
 const BERT_EMBEDDING_DIM: usize = 768;
 
-const K_NEAREST_NEIGHBOURS: usize = 10;
+#[derive(Clone)]
+struct EmbeddingPoint(Vec<f32>);
 
-type Tree = KdTree<f32, u32, BERT_EMBEDDING_DIM, BUCKET_SIZE, u16>;
+impl Point for EmbeddingPoint {
+  fn distance(&self, other: &Self) -> f32 {
+    self
+      .0
+      .iter()
+      .zip(other.0.iter())
+      .map(|(a, b)| (a - b).powi(2))
+      .sum::<f32>()
+      .sqrt()
+  }
+}
 
 #[pyclass]
 #[derive(FromPyObject)]
@@ -52,7 +63,7 @@ impl Node {
 
 #[pyclass]
 pub struct Svart {
-  tree: Tree,
+  hnsw_map: HnswMap<EmbeddingPoint, Node>,
   #[pyo3(get)]
   data: Vec<Node>,
 }
@@ -62,7 +73,7 @@ impl Svart {
   #[new]
   pub fn new() -> Self {
     Self {
-      tree: Tree::new(),
+      hnsw_map: Builder::default().build(Vec::new(), Vec::new()),
       data: Vec::new(),
     }
   }
@@ -88,36 +99,19 @@ impl Svart {
   ///
   /// svart.index(data).unwrap();
   /// ```
-  pub fn index(&mut self, mut data: Vec<PyRef<Data>>) {
-    // Preallocate memory for self.data
-    self.data.reserve(data.len());
-
-    for d in data.iter_mut() {
-      // Resize embeddings and add to KdTree
-      let mut embedding = d.embedding.clone();
-      embedding.resize(BERT_EMBEDDING_DIM, 0.0);
-
-      let node = Node {
+  pub fn index(&mut self, data: Vec<PyRef<Data>>) {
+    let points: Vec<EmbeddingPoint> = data
+      .iter()
+      .map(|d| EmbeddingPoint(d.embedding.clone()))
+      .collect();
+    let nodes: Vec<Node> = data
+      .into_iter()
+      .map(|d| Node {
         text: d.text.clone(),
-      };
+      })
+      .collect();
 
-      let index = self.data.len() as u32;
-      self.data.push(node);
-
-      // Convert the resized embedding to a fixed-size array
-      let query: &[f32; BERT_EMBEDDING_DIM] =
-        match embedding.as_slice().try_into() {
-          Ok(arr) => arr,
-          Err(_) => {
-            eprintln!(
-              "Error: Embedding vector has incorrect length after resizing"
-            );
-            continue;
-          }
-        };
-
-      self.tree.add(query, index)
-    }
+    self.hnsw_map = Builder::default().build(points, nodes);
   }
 
   /// Searches the KdTree for the nearest neighbors to the given query vector using squared Euclidean distance.
@@ -158,26 +152,12 @@ impl Svart {
   /// let results = svart.search(query).unwrap();
   /// assert_eq!(results.len(), 1);
   /// ```
-  pub fn search(&mut self, mut query: Vec<f32>) -> Vec<Node> {
-    query.resize(BERT_EMBEDDING_DIM, 0.0);
+  pub fn search(&self, query: Vec<f32>) -> Vec<Node> {
+    let query_point = EmbeddingPoint(query);
+    let mut search = Search::default();
+    let results = self.hnsw_map.search(&query_point, &mut search);
 
-    let query: &[f32; BERT_EMBEDDING_DIM] = &query.try_into().unwrap();
-
-    // Search the KdTree
-    let neighbours = self
-      .tree
-      .nearest_n::<SquaredEuclidean>(query, K_NEAREST_NEIGHBOURS);
-
-    let mut data = Vec::with_capacity(neighbours.len());
-
-    for n in neighbours.iter() {
-      let index = n.item as usize;
-      let node = self.data.get(index).unwrap();
-
-      data.push(node.clone());
-    }
-
-    data
+    results.map(|item| item.value.clone()).collect()
   }
 }
 
@@ -209,9 +189,9 @@ mod tests {
       let mut svart = Svart::new();
 
       let data_instances = vec![
-        create_data_instance(py, "text1", vec![1.0; 100]),
-        create_data_instance(py, "text2", vec![1.0; 1000]),
-        create_data_instance(py, "text3", vec![1.0; 768]),
+        create_data_instance(py, "text1", vec![1.0; 768]),
+        create_data_instance(py, "text2", vec![2.0; 768]),
+        create_data_instance(py, "text3", vec![3.0; 768]),
       ];
 
       let data_pyrefs: Vec<PyRef<Data>> = data_instances
@@ -221,8 +201,7 @@ mod tests {
 
       svart.index(data_pyrefs);
 
-      assert_eq!(svart.data.len(), 3);
-      assert_eq!(svart.tree.size(), 3);
+      assert_eq!(svart.hnsw_map.values.len(), 3);
     });
   }
 
@@ -233,9 +212,9 @@ mod tests {
       let mut svart = Svart::new();
 
       let data_instances = vec![
-        create_data_instance(py, "text1", vec![1.0; 100]),
-        create_data_instance(py, "text2", vec![1.0; 1000]),
-        create_data_instance(py, "text3", vec![1.0; 768]),
+        create_data_instance(py, "text1", vec![1.0; 768]),
+        create_data_instance(py, "text2", vec![2.0; 768]),
+        create_data_instance(py, "text3", vec![3.0; 768]),
       ];
 
       let data_pyrefs: Vec<PyRef<Data>> = data_instances
@@ -274,6 +253,7 @@ mod tests {
       svart.index(data_pyrefs);
 
       let results = svart.search(QUERY.to_vec());
+
       assert_eq!(results.get(0).unwrap().text, TEXT[2]);
     });
   }

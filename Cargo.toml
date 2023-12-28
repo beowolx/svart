@@ -21,5 +21,6 @@ name = "svart"
 crate-type = ["cdylib"]
 
 [dependencies]
+instant-distance = "0.6.1"
 kiddo = "3.0.0"
 pyo3 = "0.20.0"
