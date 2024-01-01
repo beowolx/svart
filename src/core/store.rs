@@ -64,8 +64,6 @@ impl Node {
 #[pyclass]
 pub struct Svart {
   hnsw_map: HnswMap<EmbeddingPoint, Node>,
-  #[pyo3(get)]
-  data: Vec<Node>,
 }
 
 #[pymethods]
@@ -74,31 +72,9 @@ impl Svart {
   pub fn new() -> Self {
     Self {
       hnsw_map: Builder::default().build(Vec::new(), Vec::new()),
-      data: Vec::new(),
     }
   }
-  /// Indexes the given `data` by adding it to the internal data structure and KdTree.
-  ///
-  /// This method takes ownership of the `data` vector and adds each element to the internal data
-  /// structure. It also resizes the embeddings to `BERT_EMBEDDING_DIM` and adds them to the KdTree.
-  ///
-  /// # Arguments
-  ///
-  /// * `data` - A vector of `Data` elements to be indexed.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use svart::{Svart, Data};
-  ///
-  /// let mut svart = Svart::new();
-  /// let data = vec![Data {
-  ///     text: "Hello, world!".to_string(),
-  ///     embedding: vec![1.0, 2.0, 3.0],
-  /// }];
-  ///
-  /// svart.index(data).unwrap();
-  /// ```
+
   pub fn index(&mut self, data: Vec<PyRef<Data>>) {
     let points: Vec<EmbeddingPoint> = data
       .iter()
@@ -114,44 +90,6 @@ impl Svart {
     self.hnsw_map = Builder::default().build(points, nodes);
   }
 
-  /// Searches the KdTree for the nearest neighbors to the given query vector using squared Euclidean distance.
-  ///
-  /// This method employs the K-Nearest Neighbors (K-NN) algorithm with squared Euclidean distance as the distance metric.
-  /// It first resizes the query vector to match the fixed dimensionality of the BERT model (768).
-  /// Then, it searches the KdTree to find the nearest neighbors based on the squared Euclidean distance.
-  ///
-  /// The function returns a vector of references to `Node` objects, which are the nearest neighbors to the query vector.
-  ///
-  /// # Arguments
-  ///
-  /// * `query` - A vector of `f32` values representing the query vector.
-  ///
-  /// # Returns
-  ///
-  /// Returns a `Result` containing a vector of references to `Node` objects, which are the nearest neighbors to the query vector.
-  ///
-  /// # Errors
-  ///
-  /// - Returns an error if the query vector cannot be resized and converted into a fixed-size array of `BERT_EMBEDDING_DIM` elements.
-  /// - Returns an error if a node corresponding to a particular index in the KdTree is not found.
-  /// # Examples
-  ///
-  /// ```
-  /// use svart::{Svart, Data};
-  ///
-  /// let mut svart = Svart::new();
-  /// let data = vec![Data {
-  ///     text: "Hello, world!".to_string(),
-  ///     embedding: vec![1.0; 100],
-  /// }];
-  ///
-  /// svart.index(data).unwrap();
-  ///
-  /// let query = vec![1.0; 768];
-  ///
-  /// let results = svart.search(query).unwrap();
-  /// assert_eq!(results.len(), 1);
-  /// ```
   pub fn search(&self, query: Vec<f32>) -> Vec<Node> {
     let query_point = EmbeddingPoint(query);
     let mut search = Search::default();

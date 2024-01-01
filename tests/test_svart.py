@@ -16,14 +16,19 @@ def test_search_returns_correct_data():
 
 
 def test_correct_indexing():
-    """Test that data is correctly indexed."""
+    """Test that data is correctly indexed and searchable."""
     svart_instance = svart.Svart()
 
     data = [svart.Data(text=TEXT_FIXTURE[i], embedding=EMBEDDINGS_FIXTURE[i])
             for i in range(len(TEXT_FIXTURE))]
     svart_instance.index(data)
 
-    assert len(svart_instance.data) == len(data)
+    query_embedding = EMBEDDINGS_FIXTURE[0]
+    search_results = svart_instance.search(query_embedding)
+
+    assert len(search_results) == len(data)
+    assert search_results[0].text == "How much is a burguer?"
+
 
 
 def test_search_results():
