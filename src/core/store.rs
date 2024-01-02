@@ -13,13 +13,20 @@ struct EmbeddingPoint(Vec<f32>);
 
 impl Point for EmbeddingPoint {
   fn distance(&self, other: &Self) -> f32 {
-    self
-      .0
-      .iter()
-      .zip(other.0.iter())
-      .map(|(a, b)| (a - b).powi(2))
-      .sum::<f32>()
-      .sqrt()
+    let dot_product: f32 =
+      self.0.iter().zip(&other.0).map(|(a, b)| a * b).sum();
+    let magnitude_self: f32 =
+      self.0.iter().map(|a| a.powi(2)).sum::<f32>().sqrt();
+    let magnitude_other: f32 =
+      other.0.iter().map(|a| a.powi(2)).sum::<f32>().sqrt();
+
+    // Handling zero vectors (if either magnitude is zero)
+    if magnitude_self == 0.0 || magnitude_other == 0.0 {
+      return f32::MAX;
+    }
+
+    // Cosine similarity ranges from -1 to 1. Subtracting from 1 to convert it into a distance measure.
+    1.0 - dot_product / (magnitude_self * magnitude_other)
   }
 }
 

@@ -1,4 +1,3 @@
-import pytest
 import svart
 from embeddings_fixture import TEXT_FIXTURE, EMBEDDINGS_FIXTURE, QUERY_FIXTURE
 
