@@ -1,3 +1,5 @@
+use ndarray::{s, Array1};
+use packed_simd::f32x4;
 use pyo3::prelude::*;
 
 use instant_distance::{Builder, HnswMap, Point, Search};
@@ -9,25 +11,61 @@ const BUCKET_SIZE: usize = 32;
 const BERT_EMBEDDING_DIM: usize = 768;
 
 #[derive(Clone)]
-struct EmbeddingPoint(Vec<f32>);
+struct EmbeddingPoint(Array1<f32>);
 
 impl Point for EmbeddingPoint {
   fn distance(&self, other: &Self) -> f32 {
-    let dot_product: f32 =
-      self.0.iter().zip(&other.0).map(|(a, b)| a * b).sum();
-    let magnitude_self: f32 =
-      self.0.iter().map(|a| a.powi(2)).sum::<f32>().sqrt();
-    let magnitude_other: f32 =
-      other.0.iter().map(|a| a.powi(2)).sum::<f32>().sqrt();
+    let dot_product = simd_dot_product(&self.0, &other.0);
 
-    // Handling zero vectors (if either magnitude is zero)
-    if magnitude_self == 0.0 || magnitude_other == 0.0 {
+    let mag_self = simd_magnitude(&self.0);
+    let mag_other = simd_magnitude(&other.0);
+
+    if mag_self == 0.0 || mag_other == 0.0 {
       return f32::MAX;
     }
 
-    // Cosine similarity ranges from -1 to 1. Subtracting from 1 to convert it into a distance measure.
-    1.0 - dot_product / (magnitude_self * magnitude_other)
+    1.0 - (dot_product / (mag_self * mag_other)).powi(2)
   }
+}
+
+fn simd_dot_product(a: &Array1<f32>, b: &Array1<f32>) -> f32 {
+  let mut sum = f32x4::splat(0.0);
+  let chunks = a.len() / 4; // f32x4 has 4 lanes
+
+  for i in 0..chunks {
+    let a_slice = a.slice(s![4 * i..4 * (i + 1)]);
+    let b_slice = b.slice(s![4 * i..4 * (i + 1)]);
+    let a_chunk = f32x4::from_slice_unaligned(a_slice.as_slice().unwrap());
+    let b_chunk = f32x4::from_slice_unaligned(b_slice.as_slice().unwrap());
+    sum += a_chunk * b_chunk;
+  }
+
+  let mut dot_product = sum.sum();
+
+  for i in (chunks * 4)..a.len() {
+    dot_product += a[i] * b[i];
+  }
+
+  dot_product
+}
+
+fn simd_magnitude(a: &Array1<f32>) -> f32 {
+  let mut sum = f32x4::splat(0.0);
+  let chunks = a.len() / 4;
+
+  for i in 0..chunks {
+    let a_slice = a.slice(s![4 * i..4 * (i + 1)]);
+    let a_chunk = f32x4::from_slice_unaligned(a_slice.as_slice().unwrap());
+    sum += a_chunk * a_chunk;
+  }
+
+  let mut magnitude = sum.sum();
+
+  for i in (chunks * 4)..a.len() {
+    magnitude += a[i] * a[i];
+  }
+
+  magnitude.sqrt()
 }
 
 #[pyclass]
@@ -85,7 +123,7 @@ impl Svart {
   pub fn index(&mut self, data: Vec<PyRef<Data>>) {
     let points: Vec<EmbeddingPoint> = data
       .iter()
-      .map(|d| EmbeddingPoint(d.embedding.clone()))
+      .map(|d| EmbeddingPoint(d.embedding.clone().into()))
       .collect();
     let nodes: Vec<Node> = data
       .into_iter()
@@ -98,7 +136,7 @@ impl Svart {
   }
 
   pub fn search(&self, query: Vec<f32>) -> Vec<Node> {
-    let query_point = EmbeddingPoint(query);
+    let query_point = EmbeddingPoint(query.into());
     let mut search = Search::default();
     let results = self.hnsw_map.search(&query_point, &mut search);
 
